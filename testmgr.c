@@ -45,11 +45,6 @@ struct tcrypt_result {
 	int err;
 };
 
-struct akcipher_test_suite {
-	const struct akcipher_testvec *vecs;
-	unsigned int count;
-};
-
 struct akcipher_testvec {
 	const unsigned char *key;
 	const unsigned char *m;
@@ -64,8 +59,7 @@ struct akcipher_testvec {
 /*
  * RSA test vectors. Borrowed from openSSL.
  */
-static const struct akcipher_testvec rsa_tv_template[] = {
-	{
+static const struct akcipher_testvec suite = {
 	.key =
 	"\x30\x82\x09\x29" /* sequence of 2345 bytes */
 	"\x02\x01\x00" /* version integer of 1 byte */
@@ -263,11 +257,10 @@ static const struct akcipher_testvec rsa_tv_template[] = {
 	.key_len = 2349,
 	.m_size = 8,
 	.c_size = 512,
-	}
 };
 
 
-static void hexdump(unsigned char *buf, unsigned int len)
+static void hexdump(const unsigned char *buf, unsigned int len)
 {
 	print_hex_dump(KERN_CONT, "", DUMP_PREFIX_OFFSET,
 			16, 1,
@@ -322,20 +315,20 @@ static int wait_async_op(struct tcrypt_result *tr, int ret)
 	return ret;
 }
 
-static int test_akcipher_one(struct crypto_akcipher *tfm,
-			     const struct akcipher_testvec *vecs)
+static int rsa_encrypto(struct crypto_akcipher *tfm,
+		const unsigned char *key, const unsigned char *m, 
+		unsigned int key_len, unsigned int m_size, void **outbuf_enc_ret)
 {
 	char *xbuf[XBUFSIZE];
 	struct akcipher_request *req;
 	void *outbuf_enc = NULL;
-	void *outbuf_dec = NULL;
 	struct tcrypt_result result;
 	unsigned int out_len_max, out_len = 0;
 	int err = -ENOMEM;
 	struct scatterlist src, dst, src_tab[2];
 	const char *algo = crypto_tfm_alg_driver_name(crypto_akcipher_tfm(tfm));
 
-	pr_info("Start to do test_akcipher_one with alg:%s key_len:%d\n", algo, vecs->c_size);
+	pr_info("Start to do encrypto with alg:%s(512)\n", algo);
 	if (testmgr_alloc_buf(xbuf))
 		return err;
 
@@ -350,7 +343,7 @@ static int test_akcipher_one(struct crypto_akcipher *tfm,
 		err = crypto_akcipher_set_pub_key(tfm, vecs->key, vecs->key_len);
 	else
 	*/
-	err = crypto_akcipher_set_priv_key(tfm, vecs->key, vecs->key_len);
+	err = crypto_akcipher_set_priv_key(tfm, key, key_len);
 	if (err)
 		goto free_req;
 
@@ -360,19 +353,18 @@ static int test_akcipher_one(struct crypto_akcipher *tfm,
 	if (!outbuf_enc)
 		goto free_req;
 
-	if (WARN_ON(vecs->m_size > PAGE_SIZE))
+	if (WARN_ON(m_size > PAGE_SIZE))
 		goto free_all;
 
 	pr_info("Paintext:\n");
-	hexdump(vecs->m, vecs->m_size);
-	memcpy(xbuf[0], vecs->m, vecs->m_size);
+	hexdump(m, m_size);
+	memcpy(xbuf[0], m, m_size);
 
 	sg_init_table(src_tab, 2);
 	sg_set_buf(&src_tab[0], xbuf[0], 8);
-	sg_set_buf(&src_tab[1], xbuf[0] + 8, vecs->m_size - 8);
+	sg_set_buf(&src_tab[1], xbuf[0] + 8, m_size - 8);
 	sg_init_one(&dst, outbuf_enc, out_len_max);
-	akcipher_request_set_crypt(req, src_tab, &dst, vecs->m_size,
-				   out_len_max);
+	akcipher_request_set_crypt(req, src_tab, &dst, m_size, out_len_max);
 	akcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,
 				      tcrypt_complete, &result);
 
@@ -387,57 +379,113 @@ static int test_akcipher_one(struct crypto_akcipher *tfm,
 		pr_err("alg: akcipher: encrypt test failed. err %d\n", err);
 		goto free_all;
 	}
-	if (req->dst_len != vecs->c_size) {
+	/*
+	if (req->dst_len != c_size) {
 		pr_err("alg: akcipher: encrypt test failed. Invalid output len\n");
 		err = -EINVAL;
 		goto free_all;
 	}
+	*/
 	/* verify that encrypted message is equal to expected */
 	/*
-	if (memcmp(vecs->c, outbuf_enc, vecs->c_size)) {
+	if (memcmp(c, outbuf_enc, c_size)) {
 		pr_err("alg: akcipher: encrypt test failed. Invalid output\n");
-		hexdump(outbuf_enc, vecs->c_size);
+		hexdump(outbuf_enc, c_size);
 		err = -EINVAL;
 		goto free_all;
 	}
 	*/
 	/* Don't invoke decrypt for vectors with public key */
+	/*
 	if (vecs->public_key_vec) {
 		err = 0;
 		goto free_all;
 	}
+	*/
+	*outbuf_enc_ret = outbuf_enc;
+
+	akcipher_request_free(req);
+	testmgr_free_buf(xbuf);
+	return 0;
+
+free_all:
+	kfree(outbuf_enc);
+free_req:
+	akcipher_request_free(req);
+free_xbuf:
+	testmgr_free_buf(xbuf);
+	return err;
+}
+
+static int rsa_decrypto(struct crypto_akcipher *tfm,
+		const unsigned char *key, const unsigned char *c,
+		unsigned int key_len, unsigned int c_size,
+		void *outbuf_enc, void **outbuf_dec_ret)
+{
+	char *xbuf[XBUFSIZE];
+	struct akcipher_request *req;
+	void *outbuf_dec = NULL;
+	struct tcrypt_result result;
+	unsigned int out_len_max, out_len = 0;
+	int err = 0;
+	struct scatterlist src, dst, src_tab[2];
+	const char *algo = crypto_tfm_alg_driver_name(crypto_akcipher_tfm(tfm));
+
+	pr_info("Start to do encrypto with alg:%s(%d)\n", algo, c_size);
+	if (testmgr_alloc_buf(xbuf))
+		return err;
+
+	req = akcipher_request_alloc(tfm, GFP_KERNEL);
+	if (!req)
+		goto free_xbuf;
+
+	init_completion(&result.completion);
+
+	err = crypto_akcipher_set_priv_key(tfm, key, key_len);
+	if (err)
+		goto free_req;
+
+	out_len_max = crypto_akcipher_maxsize(tfm);
 	outbuf_dec = kzalloc(out_len_max, GFP_KERNEL);
 	if (!outbuf_dec) {
 		err = -ENOMEM;
 		goto free_all;
 	}
 
-	if (WARN_ON(vecs->c_size > PAGE_SIZE))
+	if (WARN_ON(c_size > PAGE_SIZE))
 		goto free_all;
 
-	memcpy(xbuf[0], outbuf_enc, vecs->c_size);
+	memcpy(xbuf[0], outbuf_enc, c_size);
 
-	sg_init_one(&src, xbuf[0], vecs->c_size);
+	sg_init_table(src_tab, 2);
+	sg_set_buf(&src_tab[0], xbuf[0], 8);
+	sg_init_one(&src, xbuf[0], c_size);
 	sg_init_one(&dst, outbuf_dec, out_len_max);
-	init_completion(&result.completion);
-	akcipher_request_set_crypt(req, &src, &dst, vecs->c_size, out_len_max);
+	akcipher_request_set_crypt(req, &src, &dst, c_size, out_len_max);
+	akcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,
+				      tcrypt_complete, &result);
 
-	err = wait_async_op(&result, vecs->siggen_sigver_test ?
-				     /* Run asymmetric signature verification */
-				     crypto_akcipher_verify(req) :
-				     /* Run asymmetric decrypt */
-				     crypto_akcipher_decrypt(req));
+	/* Run asymmetric decrypt */
+	err = wait_async_op(&result, crypto_akcipher_decrypt(req));
+
+#if 0
+	/* Run asymmetric signature verification */
+	crypto_akcipher_verify(req) :
+#endif
+				     
 	if (err) {
 		pr_err("alg: akcipher: decrypt test failed. err %d\n", err);
 		goto free_all;
 	}
 	out_len = req->dst_len;
-	if (out_len < vecs->m_size) {
+	/*
+	if (out_len < m_size) {
 		pr_err("alg: akcipher: decrypt test failed. "
 		       "Invalid output len %u\n", out_len);
 		err = -EINVAL;
 		goto free_all;
 	}
+	*/
 	/* verify that decrypted message is equal to the original msg */
 	/*
 	if (memchr_inv(outbuf_dec, 0, out_len - vecs->m_size) ||
@@ -448,13 +496,15 @@ static int test_akcipher_one(struct crypto_akcipher *tfm,
 		err = -EINVAL;
 	}
 	*/
-	pr_info("Show encryp buffer:\n");
-	hexdump(outbuf_enc, vecs->c_size);
-	pr_info("Show decryp buffer:\n");
-	hexdump(outbuf_dec, out_len);
+
+	akcipher_request_free(req);
+	testmgr_free_buf(xbuf);
+
+	*outbuf_dec_ret = outbuf_dec;
+	return 0;
+
 free_all:
 	kfree(outbuf_dec);
-	kfree(outbuf_enc);
 free_req:
 	akcipher_request_free(req);
 free_xbuf:
@@ -462,24 +512,40 @@ free_xbuf:
 	return err;
 }
 
-#define __VECS(tv)	{ .vecs = tv, .count = ARRAY_SIZE(tv) }
-
 static __init int alg_test_init(void)
 {
 	struct crypto_akcipher *tfm;
 	int err = 0;
 	const char* driver = "rsa-generic";
 	u32 type = 0, mask = 0;
-	struct akcipher_test_suite suite = __VECS(rsa_tv_template);
-	const char *algo = crypto_tfm_alg_driver_name(crypto_akcipher_tfm(tfm));
+	void *outbuf_enc = NULL;
+	void *outbuf_dec = NULL;
 
 	tfm = crypto_alloc_akcipher(driver, type, mask);
 	if (IS_ERR(tfm)) {
-		pr_err("alg: akcipher: Failed to load tfm for %s: %ld\n",
-		       driver, PTR_ERR(tfm));
+		pr_err("Failed to load for %s: %ld\n", driver, PTR_ERR(tfm));
 		return PTR_ERR(tfm);
 	}
-	err = test_akcipher_one(tfm, suite.vecs);
+
+	err = rsa_encrypto(tfm, suite.key, suite.m, suite.key_len, suite.m_size, &outbuf_enc);
+	if (err) {
+		pr_err("Failed to do encrypto\n");
+		return err;
+	}
+
+	pr_info("Show encryp buffer:\n");
+	hexdump(outbuf_enc, suite.c_size);
+
+	err = rsa_decrypto(tfm, suite.key, suite.c, suite.key_len, suite.c_size, outbuf_enc, &outbuf_dec);
+	if (err) {
+		pr_err("Failed to do decrypto\n");
+		return err;
+	}
+	pr_info("Show decryp buffer:\n");
+	hexdump(outbuf_dec, suite.c_size);
+
+	kfree(outbuf_enc);
+	kfree(outbuf_dec);
 
 	crypto_free_akcipher(tfm);
 	return err;

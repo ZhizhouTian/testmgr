@@ -1,25 +1,3 @@
-/*
- * Algorithm testing framework and tests.
- *
- * Copyright (c) 2002 James Morris <jmorris@intercode.com.au>
- * Copyright (c) 2002 Jean-Francois Dive <jef@linuxbe.org>
- * Copyright (c) 2007 Nokia Siemens Networks
- * Copyright (c) 2008 Herbert Xu <herbert@gondor.apana.org.au>
- *
- * Updated RFC4106 AES-GCM testing.
- *    Authors: Aidan O'Mahony (aidan.o.mahony@intel.com)
- *             Adrian Hoban <adrian.hoban@intel.com>
- *             Gabriele Paoloni <gabriele.paoloni@intel.com>
- *             Tadeusz Struk (tadeusz.struk@intel.com)
- *    Copyright (c) 2010, Intel Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
- *
- */
-
 #include <crypto/aead.h>
 #include <crypto/hash.h>
 #include <crypto/skcipher.h>
@@ -501,7 +479,7 @@ static int wait_async_op(struct tcrypt_result *tr, int ret)
 	return ret;
 }
 
-static int rsa_encrypto(struct crypto_akcipher *tfm,
+static int rsa_encrypt(struct crypto_akcipher *tfm,
 		const unsigned char *private_key, const unsigned char *plain_text, 
 		unsigned int private_key_len, unsigned int plain_text_size, void **outbuf_enc_ret)
 {
@@ -601,7 +579,7 @@ free_xbuf:
 	return err;
 }
 
-static int rsa_decrypto(struct crypto_akcipher *tfm,
+static int rsa_decrypt(struct crypto_akcipher *tfm,
 		const unsigned char *private_key, unsigned int private_key_len,
 		void *outbuf_enc, void **outbuf_dec_ret)
 {
@@ -709,7 +687,7 @@ static __init int alg_test_init(void)
 	algo = crypto_tfm_alg_driver_name(crypto_akcipher_tfm(tfm));
 	pr_info("Start %s encrypto and decrypto\n", algo);
 
-	err = rsa_encrypto(tfm, suite->private_key, suite->plain_text, suite->private_key_len, suite->plain_text_size, &outbuf_enc);
+	err = rsa_encrypt(tfm, suite->private_key, suite->plain_text, suite->private_key_len, suite->plain_text_size, &outbuf_enc);
 	if (err) {
 		pr_err("Failed to do encrypto\n");
 		return err;
@@ -718,7 +696,7 @@ static __init int alg_test_init(void)
 	pr_info("Show encryp buffer:\n");
 	hexdump(outbuf_enc, RSA_SIZE);
 
-	err = rsa_decrypto(tfm, suite->private_key, suite->private_key_len, outbuf_enc, &outbuf_dec);
+	err = rsa_decrypt(tfm, suite->private_key, suite->private_key_len, outbuf_enc, &outbuf_dec);
 	if (err) {
 		pr_err("Failed to do decrypto\n");
 		return err;

@@ -46,21 +46,19 @@ struct tcrypt_result {
 };
 
 struct akcipher_testvec {
-	const unsigned char *key;
-	const unsigned char *m;
+	const unsigned char *private_key;
+	const unsigned char *plain_text;
 	const unsigned char *c;
-	unsigned int key_len;
-	unsigned int m_size;
+	unsigned int private_key_len;
+	unsigned int plain_text_size;
 	unsigned int c_size;
-	bool public_key_vec;
-	bool siggen_sigver_test;
 };
 
 /*
  * RSA test vectors. Borrowed from openSSL.
  */
 static const struct akcipher_testvec suite = {
-	.key =
+	.private_key =
 	"\x30\x82\x09\x29" /* sequence of 2345 bytes */
 	"\x02\x01\x00" /* version integer of 1 byte */
 	"\x02\x82\x02\x01" /* modulus - integer of 513 bytes */
@@ -220,7 +218,7 @@ static const struct akcipher_testvec suite = {
 	"\x61\xA6\x2C\x5D\xDF\x8F\x97\x2B\x3A\x75\x1D\x83\x17\x6F\xC6\xB0"
 	"\xDE\xFC\x14\x25\x06\x5A\x60\xBB\xB8\x21\x89\xD1\xEF\x57\xF1\x71"
 	"\x3D",
-	.m = "\x55\x85\x9b\x34\x2c\x49\xea\x2a",
+	.plain_text = "\x55\x85\x9b\x34\x2c\x49\xea\x2a",
 	.c =
 	"\x5c\xce\x9c\xd7\x9a\x9e\xa1\xfe\x7a\x82\x3c\x68\x27\x98\xe3\x5d"
 	"\xd5\xd7\x07\x29\xf5\xfb\xc3\x1a\x7f\x63\x1e\x62\x31\x3b\x19\x87"
@@ -254,8 +252,8 @@ static const struct akcipher_testvec suite = {
 	"\x5b\x0b\xe5\x83\xc6\x0e\xef\x55\xf2\xe7\xff\x04\xea\xe6\x13\xbe"
 	"\x40\xe1\x40\x45\x48\x66\x75\x31\xae\x35\x64\x91\x11\x6f\xda\xee"
 	"\x26\x86\x45\x6f\x0b\xd5\x9f\x03\xb1\x65\x5b\xdb\xa4\xe4\xf9\x45",
-	.key_len = 2349,
-	.m_size = 8,
+	.private_key_len = 2349,
+	.plain_text_size = 8,
 	.c_size = 512,
 };
 
@@ -316,8 +314,8 @@ static int wait_async_op(struct tcrypt_result *tr, int ret)
 }
 
 static int rsa_encrypto(struct crypto_akcipher *tfm,
-		const unsigned char *key, const unsigned char *m, 
-		unsigned int key_len, unsigned int m_size, void **outbuf_enc_ret)
+		const unsigned char *private_key, const unsigned char *plain_text, 
+		unsigned int private_key_len, unsigned int plain_text_size, void **outbuf_enc_ret)
 {
 	char *xbuf[XBUFSIZE];
 	struct akcipher_request *req;
@@ -340,10 +338,10 @@ static int rsa_encrypto(struct crypto_akcipher *tfm,
 
 	/*
 	if (vecs->public_key_vec)
-		err = crypto_akcipher_set_pub_key(tfm, vecs->key, vecs->key_len);
+		err = crypto_akcipher_set_pub_key(tfm, vecs->private_key, vecs->private_key_len);
 	else
 	*/
-	err = crypto_akcipher_set_priv_key(tfm, key, key_len);
+	err = crypto_akcipher_set_priv_key(tfm, private_key, private_key_len);
 	if (err)
 		goto free_req;
 
@@ -353,18 +351,18 @@ static int rsa_encrypto(struct crypto_akcipher *tfm,
 	if (!outbuf_enc)
 		goto free_req;
 
-	if (WARN_ON(m_size > PAGE_SIZE))
+	if (WARN_ON(plain_text_size > PAGE_SIZE))
 		goto free_all;
 
 	pr_info("Paintext:\n");
-	hexdump(m, m_size);
-	memcpy(xbuf[0], m, m_size);
+	hexdump(plain_text, plain_text_size);
+	memcpy(xbuf[0], plain_text, plain_text_size);
 
 	sg_init_table(src_tab, 2);
 	sg_set_buf(&src_tab[0], xbuf[0], 8);
-	sg_set_buf(&src_tab[1], xbuf[0] + 8, m_size - 8);
+	sg_set_buf(&src_tab[1], xbuf[0] + 8, plain_text_size - 8);
 	sg_init_one(&dst, outbuf_enc, out_len_max);
-	akcipher_request_set_crypt(req, src_tab, &dst, m_size, out_len_max);
+	akcipher_request_set_crypt(req, src_tab, &dst, plain_text_size, out_len_max);
 	akcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,
 				      tcrypt_complete, &result);
 
@@ -418,8 +416,8 @@ free_xbuf:
 }
 
 static int rsa_decrypto(struct crypto_akcipher *tfm,
-		const unsigned char *key, const unsigned char *c,
-		unsigned int key_len, unsigned int c_size,
+		const unsigned char *private_key, const unsigned char *c,
+		unsigned int private_key_len, unsigned int c_size,
 		void *outbuf_enc, void **outbuf_dec_ret)
 {
 	char *xbuf[XBUFSIZE];
@@ -441,7 +439,7 @@ static int rsa_decrypto(struct crypto_akcipher *tfm,
 
 	init_completion(&result.completion);
 
-	err = crypto_akcipher_set_priv_key(tfm, key, key_len);
+	err = crypto_akcipher_set_priv_key(tfm, private_key, private_key_len);
 	if (err)
 		goto free_req;
 
@@ -479,7 +477,7 @@ static int rsa_decrypto(struct crypto_akcipher *tfm,
 	}
 	out_len = req->dst_len;
 	/*
-	if (out_len < m_size) {
+	if (out_len < plain_text_size) {
 		pr_err("alg: akcipher: decrypt test failed. "
 		       "Invalid output len %u\n", out_len);
 		err = -EINVAL;
@@ -488,9 +486,9 @@ static int rsa_decrypto(struct crypto_akcipher *tfm,
 	*/
 	/* verify that decrypted message is equal to the original msg */
 	/*
-	if (memchr_inv(outbuf_dec, 0, out_len - vecs->m_size) ||
-	    memcmp(vecs->m, outbuf_dec + out_len - vecs->m_size,
-		   vecs->m_size)) {
+	if (memchr_inv(outbuf_dec, 0, out_len - vecs->plain_text_size) ||
+	    memcmp(vecs->plain_text, outbuf_dec + out_len - vecs->plain_text_size,
+		   vecs->plain_text_size)) {
 		pr_err("alg: akcipher: decrypt test failed. Invalid output\n");
 		hexdump(outbuf_dec, out_len);
 		err = -EINVAL;
@@ -527,7 +525,7 @@ static __init int alg_test_init(void)
 		return PTR_ERR(tfm);
 	}
 
-	err = rsa_encrypto(tfm, suite.key, suite.m, suite.key_len, suite.m_size, &outbuf_enc);
+	err = rsa_encrypto(tfm, suite.private_key, suite.plain_text, suite.private_key_len, suite.plain_text_size, &outbuf_enc);
 	if (err) {
 		pr_err("Failed to do encrypto\n");
 		return err;
@@ -536,7 +534,7 @@ static __init int alg_test_init(void)
 	pr_info("Show encryp buffer:\n");
 	hexdump(outbuf_enc, suite.c_size);
 
-	err = rsa_decrypto(tfm, suite.key, suite.c, suite.key_len, suite.c_size, outbuf_enc, &outbuf_dec);
+	err = rsa_decrypto(tfm, suite.private_key, suite.c, suite.private_key_len, suite.c_size, outbuf_enc, &outbuf_dec);
 	if (err) {
 		pr_err("Failed to do decrypto\n");
 		return err;

@@ -39,6 +39,7 @@
  * Need slab memory for testing (size in number of pages).
  */
 #define XBUFSIZE	8
+#define RSA_SIZE	512
 
 struct tcrypt_result {
 	struct completion completion;
@@ -48,10 +49,10 @@ struct tcrypt_result {
 struct akcipher_testvec {
 	const unsigned char *private_key;
 	const unsigned char *plain_text;
-	const unsigned char *c;
+	const unsigned char *public_key;
 	unsigned int private_key_len;
 	unsigned int plain_text_size;
-	unsigned int c_size;
+	unsigned int public_key_len;
 };
 
 /*
@@ -219,44 +220,9 @@ static const struct akcipher_testvec suite = {
 	"\xDE\xFC\x14\x25\x06\x5A\x60\xBB\xB8\x21\x89\xD1\xEF\x57\xF1\x71"
 	"\x3D",
 	.plain_text = "\x55\x85\x9b\x34\x2c\x49\xea\x2a",
-	.c =
-	"\x5c\xce\x9c\xd7\x9a\x9e\xa1\xfe\x7a\x82\x3c\x68\x27\x98\xe3\x5d"
-	"\xd5\xd7\x07\x29\xf5\xfb\xc3\x1a\x7f\x63\x1e\x62\x31\x3b\x19\x87"
-	"\x79\x4f\xec\x7b\xf3\xcb\xea\x9b\x95\x52\x3a\x40\xe5\x87\x7b\x72"
-	"\xd1\x72\xc9\xfb\x54\x63\xd8\xc9\xd7\x2c\xfc\x7b\xc3\x14\x1e\xbc"
-	"\x18\xb4\x34\xa1\xbf\x14\xb1\x37\x31\x6e\xf0\x1b\x35\x19\x54\x07"
-	"\xf7\x99\xec\x3e\x63\xe2\xcd\x61\x28\x65\xc3\xcd\xb1\x38\x36\xa5"
-	"\xb2\xd7\xb0\xdc\x1f\xf5\xef\x19\xc7\x53\x32\x2d\x1c\x26\xda\xe4"
-	"\x0d\xd6\x90\x7e\x28\xd8\xdc\xe4\x61\x05\xd2\x25\x90\x01\xd3\x96"
-	"\x6d\xa6\xcf\x58\x20\xbb\x03\xf4\x01\xbc\x79\xb9\x18\xd8\xb8\xba"
-	"\xbd\x93\xfc\xf2\x62\x5d\x8c\x66\x1e\x0e\x84\x59\x93\xdd\xe2\x93"
-	"\xa2\x62\x7d\x08\x82\x7a\xdd\xfc\xb8\xbc\xc5\x4f\x9c\x4e\xbf\xb4"
-	"\xfc\xf4\xc5\x01\xe8\x00\x70\x4d\x28\x26\xcc\x2e\xfe\x0e\x58\x41"
-	"\x8b\xec\xaf\x7c\x4b\x54\xd0\xa0\x64\xf9\x32\xf4\x2e\x47\x65\x0a"
-	"\x67\x88\x39\x3a\xdb\xb2\xdb\x7b\xb5\xf6\x17\xa8\xd9\xc6\x5e\x28"
-	"\x13\x82\x8a\x99\xdb\x60\x08\xa5\x23\x37\xfa\x88\x90\x31\xc8\x9d"
-	"\x8f\xec\xfb\x85\x9f\xb1\xce\xa6\x24\x50\x46\x44\x47\xcb\x65\xd1"
-	"\xdf\xc0\xb1\x6c\x90\x1f\x99\x8e\x4d\xd5\x9e\x31\x07\x66\x87\xdf"
-	"\x01\xaa\x56\x3c\x71\xe0\x2b\x6f\x67\x3b\x23\xed\xc2\xbd\x03\x30"
-	"\x79\x76\x02\x10\x10\x98\x85\x8a\xff\xfd\x0b\xda\xa5\xd9\x32\x48"
-	"\x02\xa0\x0b\xb9\x2a\x8a\x18\xca\xc6\x8f\x3f\xbb\x16\xb2\xaa\x98"
-	"\x27\xe3\x60\x43\xed\x15\x70\xd4\x57\x15\xfe\x19\xd4\x9b\x13\x78"
-	"\x8a\xf7\x21\xf1\xa2\xa2\x2d\xb3\x09\xcf\x44\x91\x6e\x08\x3a\x30"
-	"\x81\x3e\x90\x93\x8a\x67\x33\x00\x59\x54\x9a\x25\xd3\x49\x8e\x9f"
-	"\xc1\x4b\xe5\x86\xf3\x50\x4c\xbc\xc5\xd3\xf5\x3a\x54\xe1\x36\x3f"
-	"\xe2\x5a\xb4\x37\xc0\xeb\x70\x35\xec\xf6\xb7\xe8\x44\x3b\x7b\xf3"
-	"\xf1\xf2\x1e\xdb\x60\x7d\xd5\xbe\xf0\x71\x34\x90\x4c\xcb\xd4\x35"
-	"\x51\xc7\xdd\xd8\xc9\x81\xf5\x5d\x57\x46\x2c\xb1\x7b\x9b\xaa\xcb"
-	"\xd1\x22\x25\x49\x44\xa3\xd4\x6b\x29\x7b\xd8\xb2\x07\x93\xbf\x3d"
-	"\x52\x49\x84\x79\xef\xb8\xe5\xc4\xad\xca\xa8\xc6\xf6\xa6\x76\x70"
-	"\x5b\x0b\xe5\x83\xc6\x0e\xef\x55\xf2\xe7\xff\x04\xea\xe6\x13\xbe"
-	"\x40\xe1\x40\x45\x48\x66\x75\x31\xae\x35\x64\x91\x11\x6f\xda\xee"
-	"\x26\x86\x45\x6f\x0b\xd5\x9f\x03\xb1\x65\x5b\xdb\xa4\xe4\xf9\x45",
 	.private_key_len = 2349,
 	.plain_text_size = 8,
-	.c_size = 512,
 };
-
 
 static void hexdump(const unsigned char *buf, unsigned int len)
 {
@@ -321,12 +287,10 @@ static int rsa_encrypto(struct crypto_akcipher *tfm,
 	struct akcipher_request *req;
 	void *outbuf_enc = NULL;
 	struct tcrypt_result result;
-	unsigned int out_len_max, out_len = 0;
+	unsigned int out_len_max = 0;
 	int err = -ENOMEM;
-	struct scatterlist src, dst, src_tab[2];
-	const char *algo = crypto_tfm_alg_driver_name(crypto_akcipher_tfm(tfm));
+	struct scatterlist dst, src_tab[2];
 
-	pr_info("Start to do encrypto with alg:%s(512)\n", algo);
 	if (testmgr_alloc_buf(xbuf))
 		return err;
 
@@ -416,8 +380,7 @@ free_xbuf:
 }
 
 static int rsa_decrypto(struct crypto_akcipher *tfm,
-		const unsigned char *private_key, const unsigned char *c,
-		unsigned int private_key_len, unsigned int c_size,
+		const unsigned char *private_key, unsigned int private_key_len,
 		void *outbuf_enc, void **outbuf_dec_ret)
 {
 	char *xbuf[XBUFSIZE];
@@ -427,9 +390,7 @@ static int rsa_decrypto(struct crypto_akcipher *tfm,
 	unsigned int out_len_max, out_len = 0;
 	int err = 0;
 	struct scatterlist src, dst, src_tab[2];
-	const char *algo = crypto_tfm_alg_driver_name(crypto_akcipher_tfm(tfm));
 
-	pr_info("Start to do encrypto with alg:%s(%d)\n", algo, c_size);
 	if (testmgr_alloc_buf(xbuf))
 		return err;
 
@@ -450,16 +411,13 @@ static int rsa_decrypto(struct crypto_akcipher *tfm,
 		goto free_all;
 	}
 
-	if (WARN_ON(c_size > PAGE_SIZE))
-		goto free_all;
-
-	memcpy(xbuf[0], outbuf_enc, c_size);
+	memcpy(xbuf[0], outbuf_enc, RSA_SIZE);
 
 	sg_init_table(src_tab, 2);
 	sg_set_buf(&src_tab[0], xbuf[0], 8);
-	sg_init_one(&src, xbuf[0], c_size);
+	sg_init_one(&src, xbuf[0], RSA_SIZE);
 	sg_init_one(&dst, outbuf_dec, out_len_max);
-	akcipher_request_set_crypt(req, &src, &dst, c_size, out_len_max);
+	akcipher_request_set_crypt(req, &src, &dst, RSA_SIZE, out_len_max);
 	akcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,
 				      tcrypt_complete, &result);
 
@@ -518,12 +476,15 @@ static __init int alg_test_init(void)
 	u32 type = 0, mask = 0;
 	void *outbuf_enc = NULL;
 	void *outbuf_dec = NULL;
+	const char *algo = NULL;
 
 	tfm = crypto_alloc_akcipher(driver, type, mask);
 	if (IS_ERR(tfm)) {
 		pr_err("Failed to load for %s: %ld\n", driver, PTR_ERR(tfm));
 		return PTR_ERR(tfm);
 	}
+	algo = crypto_tfm_alg_driver_name(crypto_akcipher_tfm(tfm));
+	pr_info("Start %s encrypto and decrypto\n", algo);
 
 	err = rsa_encrypto(tfm, suite.private_key, suite.plain_text, suite.private_key_len, suite.plain_text_size, &outbuf_enc);
 	if (err) {
@@ -532,15 +493,15 @@ static __init int alg_test_init(void)
 	}
 
 	pr_info("Show encryp buffer:\n");
-	hexdump(outbuf_enc, suite.c_size);
+	hexdump(outbuf_enc, RSA_SIZE);
 
-	err = rsa_decrypto(tfm, suite.private_key, suite.c, suite.private_key_len, suite.c_size, outbuf_enc, &outbuf_dec);
+	err = rsa_decrypto(tfm, suite.private_key, suite.private_key_len, outbuf_enc, &outbuf_dec);
 	if (err) {
 		pr_err("Failed to do decrypto\n");
 		return err;
 	}
 	pr_info("Show decryp buffer:\n");
-	hexdump(outbuf_dec, suite.c_size);
+	hexdump(outbuf_dec, RSA_SIZE);
 
 	kfree(outbuf_enc);
 	kfree(outbuf_dec);
